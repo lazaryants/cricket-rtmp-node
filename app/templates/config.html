@@ -224,7 +224,15 @@
                 <h1>Stream configuration</h1>
                 <p>Manage receiving fields and publish settings</p>
             </div>
-            <span class="page-badge">16 field slots</span>
+            <div class="heading-actions">
+                <span class="page-badge">16 field slots</span>
+                <div class="layout-switcher" aria-label="Cards per row">
+                    <span>Columns</span>
+                    <button type="button" data-columns="2">2</button>
+                    <button type="button" data-columns="3">3</button>
+                    <button type="button" data-columns="4">4</button>
+                </div>
+            </div>
         </div>
         <div id="alert" class="alert"></div>
         <div class="toolbar">
@@ -283,6 +291,30 @@
     </div>
     <script>
         let fields = {};
+        const CONFIG_LAYOUT_KEY = 'cricket-config-columns';
+        function setConfigColumns(value) {
+            const columns = ['2', '3', '4'].includes(String(value))
+                ? String(value)
+                : '4';
+            const grid = document.getElementById('fieldsGrid');
+            grid.classList.remove('columns-2', 'columns-3', 'columns-4');
+            grid.classList.add(`columns-${columns}`);
+            document.querySelectorAll('.layout-switcher button').forEach(button => {
+                button.classList.toggle(
+                    'active',
+                    button.dataset.columns === columns
+                );
+            });
+            localStorage.setItem(CONFIG_LAYOUT_KEY, columns);
+        }
+        function setupConfigLayout() {
+            document.querySelectorAll('.layout-switcher button').forEach(button => {
+                button.addEventListener('click', () => {
+                    setConfigColumns(button.dataset.columns);
+                });
+            });
+            setConfigColumns(localStorage.getItem(CONFIG_LAYOUT_KEY) || '4');
+        }
         async function loadFields() {
             try {
                 const [fieldsResponse, statusResponse] = await Promise.all([
@@ -516,6 +548,7 @@
         document.getElementById('fieldModal').addEventListener('click', function(e) {
             if (e.target === this) closeModal();
         });
+        setupConfigLayout();
         loadFields();
         setInterval(loadFields, 10000);
     </script>
