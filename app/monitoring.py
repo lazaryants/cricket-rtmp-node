@@ -1,13 +1,19 @@
 """Safe health and metrics snapshots without configuration secrets."""
 
+import copy
 import json
 import os
+import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import psutil
+
+
+_RTMP_CACHE_LOCK = threading.Lock()
+_RTMP_APPLICATION_CACHE = {}
 
 try:
     from .version import __version__
@@ -210,6 +216,44 @@ def rtmp_snapshot(stat_url, timeout=2):
     return parse_rtmp_stat(root)
 
 
+def merge_rtmp_snapshot(snapshot, hls, application_cache=None):
+    """Merge a worker-local RTMP snapshot into the node-wide view.
+
+    nginx-rtmp statistics are local to the worker that serves the HTTP
+    request. Retain applications observed through other workers while HLS
+    still confirms that their media is active or stale.
+    """
+    cache = (
+        _RTMP_APPLICATION_CACHE
+        if application_cache is None
+        else application_cache
+    )
+    applications = snapshot.get("applications", {})
+    places = hls.get("places", {})
+
+    for application_name, application in applications.items():
+        if application.get("stream_metrics"):
+            cache[application_name] = copy.deepcopy(application)
+
+    for place_id, hls_place in places.items():
+        if hls_place.get("state") == "no_signal":
+            cache.pop(f"place{place_id}", None)
+
+    merged_applications = copy.deepcopy(cache)
+    return {
+        "reachable": snapshot.get("reachable", False),
+        "active_streams": sum(
+            application.get("streams", 0)
+            for application in merged_applications.values()
+        ),
+        "clients": sum(
+            application.get("clients", 0)
+            for application in merged_applications.values()
+        ),
+        "applications": merged_applications,
+    }
+
+
 def system_snapshot(settings):
     memory = psutil.virtual_memory()
     disk_path = settings.hls_root if settings.hls_root.exists() else settings.project_root
@@ -280,21 +324,26 @@ def metrics_snapshot(settings):
         ),
     }
 
+    hls = hls_snapshot(settings, config)
+
     try:
-        rtmp = rtmp_snapshot(settings.rtmp_stat_url)
+        worker_rtmp = rtmp_snapshot(settings.rtmp_stat_url)
     except (OSError, ValueError, ET.ParseError):
-        rtmp = {
+        worker_rtmp = {
             "reachable": False,
             "active_streams": 0,
             "clients": 0,
             "applications": {},
         }
 
+    with _RTMP_CACHE_LOCK:
+        rtmp = merge_rtmp_snapshot(worker_rtmp, hls)
+
     return {
         "timestamp": timestamp_utc(),
         "version": __version__,
         "config": safe_config,
-        "hls": hls_snapshot(settings, config),
+        "hls": hls,
         "rtmp": rtmp,
         "restream": restream_snapshot(settings, config),
         "system": system_snapshot(settings),
