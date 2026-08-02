@@ -3,25 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cricket Live Streams - Field Monitoring</title>
+    <title>Cricket RTMP Node — Monitoring</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <nav class="nav-menu">
-        <a href="/" class="active">📺 Monitoring</a>
-        <a href="/config/">⚙️ Configuration</a>
-        <a href="/admin/">🎛️ Restream Control</a>
-    </nav>
-    
-    <div class="header">
-        <h1>🏏 Cricket Live Streams</h1>
-        <p>Live field monitoring - India & Pakistan</p>
-    </div>
+    <header class="topbar">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">🏏</span>
+            <div class="brand-copy">
+                <div class="brand-title">Cricket RTMP Node</div>
+                <div class="brand-subtitle">Receiving and distribution server</div>
+            </div>
+        </div>
+        <nav class="nav-menu" aria-label="Main navigation">
+            <a href="/" class="active">Monitoring</a>
+            <a href="/config/">Configuration</a>
+            <a href="/admin/">Restreams</a>
+        </nav>
+    </header>
+
+    <main>
+        <div class="page-heading">
+            <div>
+                <h1>Live streams</h1>
+                <p>Field monitoring · India &amp; Pakistan</p>
+            </div>
+            <span class="page-badge">System online</span>
+        </div>
     <div class="grid" id="streamsGrid">
-        <div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.7;">
+        <div class="loading-state">
             Loading streams...
         </div>
     </div>
+    </main>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="script.js"></script>
 </body>
