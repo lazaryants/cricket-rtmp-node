@@ -33,7 +33,7 @@ body {
 
 .container {
     margin: 0 auto;
-    max-width: 1600px;
+    max-width: 1840px;
 }
 
 .topbar {
@@ -42,7 +42,7 @@ body {
     display: flex;
     justify-content: space-between;
     margin: 0 auto;
-    max-width: 1600px;
+    max-width: 1840px;
     min-height: 64px;
 }
 
@@ -215,7 +215,7 @@ body {
     gap: 14px;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
     margin: 0 auto;
-    max-width: 1600px;
+    max-width: 1840px;
 }
 
 .fields-grid.columns-2,
