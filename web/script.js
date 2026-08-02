@@ -107,7 +107,7 @@ function formatUptime(value) {
     const clock = [hours, minutes, seconds]
         .map(part => String(part).padStart(2, '0'))
         .join(':');
-    return days ? `${days}d ${clock}` : clock;
+    return days ? `${days} д ${clock}` : clock;
 }
 
 function formatVideoCodec(video) {
@@ -123,7 +123,7 @@ function formatAudioCodec(audio) {
     const rate = Number.isFinite(audio.sample_rate_hz)
         ? `${(audio.sample_rate_hz / 1000).toFixed(1).replace('.0', '')} kHz`
         : null;
-    const channels = Number.isFinite(audio.channels) ? `${audio.channels} ch` : null;
+    const channels = Number.isFinite(audio.channels) ? `${audio.channels} кан.` : null;
     return [audio.codec, audio.profile, rate, channels].filter(Boolean).join(' · ');
 }
 
@@ -184,7 +184,7 @@ function updateTechInfo(stream, hls, video) {
     setMetric(
         p,
         'lastupdate',
-        Number.isFinite(mediaAge) ? `${mediaAge.toFixed(1)}s ago` : '-',
+        Number.isFinite(mediaAge) ? `${mediaAge.toFixed(1)} с назад` : '-',
         Number.isFinite(mediaAge)
             ? getColorClass(mediaAge, {good: 10, warning: 30}, true)
             : 'tech-value'
@@ -198,10 +198,10 @@ function updateTechInfo(stream, hls, video) {
             if (level.details && level.details.fragments && level.details.fragments.length > 0) {
                 const fragment = level.details.fragments[0];
                 const segmentDuration = fragment.duration;
-                kfEl.innerHTML = `${segmentDuration.toFixed(1)}s <span class="tech-hint">(HLS segment)</span>`;
+                kfEl.innerHTML = `${segmentDuration.toFixed(1)} с`;
                 kfEl.className = getColorClass(segmentDuration, {good: 4, warning: 6});
             } else {
-                kfEl.innerHTML = `4.0s <span class="tech-hint">(HLS segment)</span>`;
+                kfEl.innerHTML = `4.0 с`;
                 kfEl.className = 'tech-value good';
             }
         } else {
@@ -231,7 +231,7 @@ function updateTechInfo(stream, hls, video) {
             const quality = video.getVideoPlaybackQuality();
             const dropped = quality.droppedVideoFrames || 0;
             const corrupted = quality.corruptedVideoFrames || 0;
-            browserDropEl.textContent = corrupted ? `${dropped} / ${corrupted} corrupt` : String(dropped);
+            browserDropEl.textContent = corrupted ? `${dropped} / ${corrupted} поврежд.` : String(dropped);
             browserDropEl.className = getColorClass(dropped, {good: 0, warning: 10}, true);
         } else {
             browserDropEl.textContent = 'N/A';
@@ -401,20 +401,20 @@ function renderStreams() {
                     </div>
                 </div>
                 <div class="detail-panel">
-                    <div class="panel-title">Technical information</div>
+                    <div class="panel-title">Технические параметры</div>
                     <div class="tech-info" id="tech${stream.prefix}">
-                        <div class="tech-row"><span class="tech-label">Resolution</span><span class="tech-value" id="resolution${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Source FPS</span><span class="tech-value" id="fps${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Input bitrate</span><span class="tech-value" id="bitrate${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Video codec</span><span class="tech-value" id="codec${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Audio codec</span><span class="tech-value" id="audio${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Uptime</span><span class="tech-value" id="uptime${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">RTMP dropped</span><span class="tech-value" id="dropped${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Last media</span><span class="tech-value" id="lastupdate${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">HLS segment</span><span class="tech-value" id="keyframe${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">HLS latency</span><span class="tech-value" id="latency${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Player buffer</span><span class="tech-value" id="buffer${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Browser dropped</span><span class="tech-value" id="browserdropped${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Разрешение</span><span class="tech-value" id="resolution${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">FPS источника</span><span class="tech-value" id="fps${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Входной битрейт</span><span class="tech-value" id="bitrate${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Видеокодек</span><span class="tech-value" id="codec${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Аудиокодек</span><span class="tech-value" id="audio${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Время работы</span><span class="tech-value" id="uptime${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Потери RTMP</span><span class="tech-value" id="dropped${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Последние данные</span><span class="tech-value" id="lastupdate${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Сегмент HLS</span><span class="tech-value" id="keyframe${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Задержка HLS</span><span class="tech-value" id="latency${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Буфер плеера</span><span class="tech-value" id="buffer${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Пропущено браузером</span><span class="tech-value" id="browserdropped${stream.prefix}">-</span></div>
                     </div>
                 </div>
             </div>
