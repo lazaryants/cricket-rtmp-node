@@ -175,22 +175,31 @@
             .nav-menu { flex-wrap: wrap; }
             .nav-menu a { flex: 1; text-align: center; }
         }
+        {% include 'theme.css' %}
     </style>
 </head>
 <body>
-    <nav class="nav-menu">
-        <a href="/">📺 Monitoring</a>
-        <a href="/config/">⚙️ Configuration</a>
-        <a href="/admin/" class="active">🎛️ Restream Control</a>
-    </nav>
-    
-    <div class="header">
-        <h1>🎛️ Restream Control Panel</h1>
-        <p>Multi-destination restreaming</p>
-    </div>
-    
-    <div class="logout">
-        <a href="?logout=1">Logout</a>
+    <header class="topbar">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">🏏</span>
+            <div>
+                <div class="brand-title">Cricket RTMP Node</div>
+                <div class="brand-subtitle">Receiving and distribution server</div>
+            </div>
+        </div>
+        <nav class="nav-menu" aria-label="Main navigation">
+            <a href="/">Monitoring</a>
+            <a href="/config/">Configuration</a>
+            <a href="/admin/" class="active">Restreams</a>
+        </nav>
+    </header>
+
+    <div class="page-heading">
+        <div>
+            <h1>Restream control</h1>
+            <p>Multi-destination stream distribution</p>
+        </div>
+        <div class="logout"><a href="?logout=1">Logout</a></div>
     </div>
     
     <div class="grid">
