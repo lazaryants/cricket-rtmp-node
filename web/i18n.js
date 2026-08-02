@@ -130,7 +130,7 @@
 
     function setLanguage(language) {
         localStorage.setItem(STORAGE_KEY, normalizeLanguage(language));
-        translateElement(document.body);
+        translateElement(document);
         window.dispatchEvent(new CustomEvent('cricket-language-change', {
             detail: {language: currentLanguage()}
         }));
@@ -174,7 +174,7 @@
     window.CricketI18n = {currentLanguage, setLanguage, translateElement};
     document.addEventListener('DOMContentLoaded', () => {
         mountSwitcher();
-        translateElement(document.body);
+        translateElement(document);
         observer.observe(document.body, {childList: true, subtree: true});
     });
 }());
