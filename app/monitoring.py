@@ -92,9 +92,86 @@ def restream_snapshot(settings, config):
     }
 
 
-def rtmp_snapshot(stat_url, timeout=2):
-    with urllib.request.urlopen(stat_url, timeout=timeout) as response:
-        root = ET.fromstring(response.read())
+def _number(element, path, cast=int):
+    """Read an optional numeric XML value without failing the snapshot."""
+    value = element.findtext(path)
+    if value in (None, ""):
+        return None
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _text(element, path):
+    value = element.findtext(path)
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _stream_metrics(stream):
+    clients = stream.findall("client")
+    publishers = [
+        client
+        for client in clients
+        if client.find("publishing") is not None
+    ]
+    players = len(clients) - len(publishers)
+    publisher_dropped = sum(
+        _number(client, "dropped") or 0
+        for client in publishers
+    )
+
+    time_ms = _number(stream, "time")
+    width = _number(stream, "meta/video/width")
+    height = _number(stream, "meta/video/height")
+
+    return {
+        "uptime_seconds": (
+            round(time_ms / 1000, 1)
+            if time_ms is not None
+            else None
+        ),
+        "input_bitrate_bps": _number(stream, "bw_in"),
+        "video_bitrate_bps": _number(stream, "bw_video"),
+        "audio_bitrate_bps": _number(stream, "bw_audio"),
+        "bytes_received": _number(stream, "bytes_in"),
+        "publishers": len(publishers),
+        "players": players,
+        "publisher_dropped": publisher_dropped,
+        "video": {
+            "codec": _text(stream, "meta/video/codec"),
+            "profile": _text(stream, "meta/video/profile"),
+            "level": _text(stream, "meta/video/level"),
+            "width": width,
+            "height": height,
+            "resolution": (
+                f"{width}x{height}"
+                if width is not None and height is not None
+                else None
+            ),
+            "source_fps": _number(
+                stream,
+                "meta/video/frame_rate",
+                float,
+            ),
+        },
+        "audio": {
+            "codec": _text(stream, "meta/audio/codec"),
+            "profile": _text(stream, "meta/audio/profile"),
+            "sample_rate_hz": _number(
+                stream,
+                "meta/audio/sample_rate",
+            ),
+            "channels": _number(stream, "meta/audio/channels"),
+        },
+    }
+
+
+def parse_rtmp_stat(root):
+    """Build a safe RTMP snapshot without stream names or client IPs."""
 
     applications = {}
     active_streams = 0
@@ -111,6 +188,10 @@ def rtmp_snapshot(stat_url, timeout=2):
             applications[app_name] = {
                 "streams": stream_count,
                 "clients": client_count,
+                "stream_metrics": [
+                    _stream_metrics(stream)
+                    for stream in streams
+                ],
             }
         active_streams += stream_count
         clients += client_count
@@ -121,6 +202,12 @@ def rtmp_snapshot(stat_url, timeout=2):
         "clients": clients,
         "applications": applications,
     }
+
+
+def rtmp_snapshot(stat_url, timeout=2):
+    with urllib.request.urlopen(stat_url, timeout=timeout) as response:
+        root = ET.fromstring(response.read())
+    return parse_rtmp_stat(root)
 
 
 def system_snapshot(settings):
