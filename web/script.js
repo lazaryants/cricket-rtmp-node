@@ -1,5 +1,6 @@
 let streams = [];
 let nodeMetrics = null;
+const sourceMetricsCache = new Map();
 
 const MONITOR_LAYOUT_KEY = 'cricket-monitor-columns';
 
@@ -33,11 +34,40 @@ function setupMonitorLayout() {
 }
 
 function getPlaceMetrics(prefix) {
-    const application = nodeMetrics?.rtmp?.applications?.[`place${prefix}`];
-    const candidates = application?.stream_metrics || [];
-    const source = candidates.find(item => item.publishers > 0) || candidates[0] || null;
+    const source = sourceMetricsCache.get(String(prefix)) || null;
     const hls = nodeMetrics?.hls?.places?.[String(prefix)] || null;
     return { source, hls };
+}
+
+function mergeSourceMetrics(metrics) {
+    const applications = metrics?.rtmp?.applications || {};
+
+    Object.entries(applications).forEach(([applicationName, application]) => {
+        const match = /^place([1-9]|1[0-6])$/.exec(applicationName);
+        if (!match) return;
+
+        const candidates = application?.stream_metrics || [];
+        const source = candidates.find(item => item.publishers > 0)
+            || candidates.find(item => (
+                item?.video?.resolution
+                || item?.video?.codec
+                || Number.isFinite(item?.input_bitrate_bps)
+            ));
+
+        if (source) {
+            sourceMetricsCache.set(match[1], source);
+        }
+    });
+
+    const places = metrics?.hls?.places || {};
+    Object.entries(places).forEach(([placeId, hls]) => {
+        // no_signal already means that no fresh HLS segment has existed for
+        // at least two minutes. A single incomplete RTMP snapshot must not
+        // erase the last trustworthy source metadata.
+        if (hls?.state === 'no_signal') {
+            sourceMetricsCache.delete(String(placeId));
+        }
+    });
 }
 
 function updateStreamStatus(stream) {
@@ -274,7 +304,9 @@ async function refreshNodeMetrics() {
     try {
         const response = await fetch('/api/node/metrics', {cache: 'no-store'});
         if (!response.ok) throw new Error(`Metrics HTTP ${response.status}`);
-        nodeMetrics = await response.json();
+        const metrics = await response.json();
+        mergeSourceMetrics(metrics);
+        nodeMetrics = metrics;
         streams.forEach(stream => updateStreamStatus(stream));
     } catch (error) {
         console.warn('Server metrics are temporarily unavailable:', error);
