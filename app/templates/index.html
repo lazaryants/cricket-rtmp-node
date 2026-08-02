@@ -199,10 +199,18 @@
             <h1>Restream control</h1>
             <p>Multi-destination stream distribution</p>
         </div>
-        <div class="logout"><a href="?logout=1">Logout</a></div>
+        <div class="heading-actions">
+            <div class="layout-switcher" aria-label="Cards per row">
+                <span>Columns</span>
+                <button type="button" data-columns="2">2</button>
+                <button type="button" data-columns="3">3</button>
+                <button type="button" data-columns="4">4</button>
+            </div>
+            <div class="logout"><a href="?logout=1">Logout</a></div>
+        </div>
     </div>
     
-    <div class="grid">
+    <div class="grid" id="restreamGrid">
         {% for field_id, field in fields.items() %}
         <div class="card" id="field-{{ field_id }}">
             <div class="card-header">
@@ -285,6 +293,33 @@
     </div>
 
     <script>
+        const RESTREAM_LAYOUT_KEY = 'cricket-restream-columns';
+        function setRestreamColumns(value) {
+            const columns = ['2', '3', '4'].includes(String(value))
+                ? String(value)
+                : '4';
+            const grid = document.getElementById('restreamGrid');
+            grid.classList.remove('columns-2', 'columns-3', 'columns-4');
+            grid.classList.add(`columns-${columns}`);
+            document.querySelectorAll('.layout-switcher button').forEach(button => {
+                button.classList.toggle(
+                    'active',
+                    button.dataset.columns === columns
+                );
+            });
+            localStorage.setItem(RESTREAM_LAYOUT_KEY, columns);
+        }
+        function setupRestreamLayout() {
+            document.querySelectorAll('.layout-switcher button').forEach(button => {
+                button.addEventListener('click', () => {
+                    setRestreamColumns(button.dataset.columns);
+                });
+            });
+            setRestreamColumns(
+                localStorage.getItem(RESTREAM_LAYOUT_KEY) || '4'
+            );
+        }
+
         async function saveUrl(fieldId, urlIndex) {
             const input = document.getElementById(`input-${fieldId}-${urlIndex}`);
             const newUrl = input.value.trim();
@@ -409,6 +444,8 @@
                 console.error('Failed to load logs:', error);
             }
         }
+
+        setupRestreamLayout();
 
         // Автообновление каждые 10 секунд
         setInterval(() => {
