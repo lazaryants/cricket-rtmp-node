@@ -5,6 +5,9 @@
     const dictionaries = {
         en: {},
         ru: {
+            'Cricket RTMP Node — Monitoring': 'Cricket RTMP Node — Мониторинг',
+            'Stream Configuration': 'Конфигурация трансляций',
+            'Restream Control Panel': 'Управление рестримами',
             'Monitoring': 'Мониторинг',
             'Configuration': 'Конфигурация',
             'Restreams': 'Рестримы',
@@ -85,7 +88,12 @@
         const text = value.trim();
         if (!text) return value;
         const translated = dictionaries.ru[text];
-        return translated ? `${leading}${translated}${trailing}` : value;
+        if (translated) return `${leading}${translated}${trailing}`;
+        const decorated = text.match(/^([^A-Za-zА-Яа-я0-9]*)(.*)$/u);
+        if (decorated && dictionaries.ru[decorated[2]]) {
+            return `${leading}${decorated[1]}${dictionaries.ru[decorated[2]]}${trailing}`;
+        }
+        return value;
     }
 
     function translateElement(root = document) {
