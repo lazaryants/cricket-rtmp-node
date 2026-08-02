@@ -382,7 +382,7 @@ function renderStreams() {
     const grid = document.getElementById('streamsGrid');
 
     if (streams.length === 0) {
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.7;">No streams enabled. Configure streams at <a href="/config/" style="color: #64B5F6;">/config/</a></div>';
+        grid.innerHTML = '<div class="empty-state">No streams enabled. Configure streams at <a href="/config/">Configuration</a>.</div>';
         return;
     }
     
@@ -398,33 +398,43 @@ function renderStreams() {
 
         return `
         <div class="stream-card">
-            <div class="stream-title">
-                ${safeEmoji} ${safeName}
-                <span class="live-mode-indicator">🔴 LIVE</span>
+            <div class="stream-card-header">
+                <div class="stream-title">
+                    <span class="stream-emoji">${safeEmoji}</span>
+                    <span class="stream-name">${safeName}</span>
+                </div>
+                <div class="status offline" id="${stream.statusId}">Offline</div>
             </div>
             <div class="video-container"><video id="${stream.id}" controls autoplay muted></video></div>
-            <div class="status offline" id="${stream.statusId}">⚫ Offline</div>
-            
-            <div class="stream-url">
-                <div class="stream-url-row">
-                    <span class="stream-url-label">📡 URL:</span>
-                    <span class="stream-url-value"><code>${safeRtmpBase}</code></span>
+
+            <div class="stream-details">
+                <div class="detail-panel">
+                    <div class="panel-title">Publish settings</div>
+                    <div class="stream-url">
+                        <div class="stream-url-row">
+                            <span class="stream-url-label">RTMP URL</span>
+                            <code class="stream-url-value">${safeRtmpBase}</code>
+                        </div>
+                        <div class="stream-url-row">
+                            <span class="stream-url-label">Stream key</span>
+                            <code class="stream-url-value">${safeStreamKey}</code>
+                        </div>
+                    </div>
                 </div>
-                <div class="stream-url-row">
-                    <span class="stream-url-label">🔑 Stream Key:</span>
-                    <span class="stream-url-value"><code>${safeStreamKey}</code></span>
+                <div class="detail-panel">
+                    <div class="panel-title">Technical information</div>
+                    <div class="tech-info" id="tech${stream.prefix}">
+                        <div class="tech-row"><span class="tech-label">Resolution</span><span class="tech-value" id="resolution${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">FPS</span><span class="tech-value" id="fps${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Bitrate</span><span class="tech-value" id="bitrate${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Codec</span><span class="tech-value" id="codec${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">HLS segment</span><span class="tech-value" id="keyframe${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Player buffer</span><span class="tech-value" id="buffer${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Dropped frames</span><span class="tech-value" id="dropped${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">HLS latency</span><span class="tech-value" id="latency${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Last update</span><span class="tech-value" id="lastupdate${stream.prefix}">-</span></div>
+                    </div>
                 </div>
-            </div>
-            <div class="tech-info" id="tech${stream.prefix}">
-                <div class="tech-row"><span class="tech-label">Resolution:</span><span class="tech-value" id="resolution${stream.prefix}">-</span></div>
-                <div class="tech-row"><span class="tech-label">FPS:</span><span class="tech-value" id="fps${stream.prefix}">-</span></div>
-                <div class="tech-row"><span class="tech-label">Bitrate:</span><span class="tech-value" id="bitrate${stream.prefix}">-</span></div>
-                <div class="tech-row"><span class="tech-label">Codec:</span><span class="tech-value" id="codec${stream.prefix}">-</span></div>
-                <div class="tech-row"><span class="tech-label">Keyframe:</span><span class="tech-value" id="keyframe${stream.prefix}">-</span></div>
-                <div class="tech-row"><span class="tech-label">Buffer:</span><span class="tech-value" id="buffer${stream.prefix}">-</span></div>
-                <div class="tech-row"><span class="tech-label">Dropped frames:</span><span class="tech-value" id="dropped${stream.prefix}">-</span></div>
-                <div class="tech-row"><span class="tech-label">Delay:</span><span class="tech-value" id="latency${stream.prefix}">-</span></div>
-                <div class="tech-row"><span class="tech-label">Last update:</span><span class="tech-value" id="lastupdate${stream.prefix}">-</span></div>
             </div>
         </div>
         `;
