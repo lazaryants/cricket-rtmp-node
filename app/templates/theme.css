@@ -145,6 +145,52 @@ body {
     text-transform: uppercase;
 }
 
+.heading-actions {
+    align-items: center;
+    display: flex;
+    gap: 9px;
+}
+
+.layout-switcher {
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+}
+
+.layout-switcher > span {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 0 5px;
+    text-transform: uppercase;
+}
+
+.layout-switcher button {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font: 700 11px/1 Inter, "Segoe UI", sans-serif;
+    height: 26px;
+    min-width: 27px;
+}
+
+.layout-switcher button:hover {
+    background: var(--surface-soft);
+    color: var(--text);
+}
+
+.layout-switcher button.active {
+    background: rgba(100, 181, 246, 0.13);
+    border-color: var(--border-strong);
+    color: var(--primary);
+}
+
 .toolbar {
     align-items: center;
     background: var(--surface);
@@ -170,6 +216,21 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
     margin: 0 auto;
     max-width: 1600px;
+}
+
+.fields-grid.columns-2,
+.grid.columns-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fields-grid.columns-3,
+.grid.columns-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fields-grid.columns-4,
+.grid.columns-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .field-card,
@@ -570,6 +631,10 @@ summary {
     }
 
     .page-badge {
+        display: none;
+    }
+
+    .layout-switcher > span {
         display: none;
     }
 
