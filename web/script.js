@@ -1,6 +1,37 @@
 const streamStats = {};
 let streams = [];
 
+const MONITOR_LAYOUT_KEY = 'cricket-monitor-columns';
+
+function setMonitorColumns(value) {
+    const columns = ['2', '3', '4'].includes(String(value))
+        ? String(value)
+        : '4';
+    const grid = document.getElementById('streamsGrid');
+    if (!grid) return;
+
+    grid.classList.remove('columns-2', 'columns-3', 'columns-4');
+    grid.classList.add(`columns-${columns}`);
+
+    document.querySelectorAll('.layout-switcher button').forEach(button => {
+        button.classList.toggle(
+            'active',
+            button.dataset.columns === columns
+        );
+    });
+
+    localStorage.setItem(MONITOR_LAYOUT_KEY, columns);
+}
+
+function setupMonitorLayout() {
+    document.querySelectorAll('.layout-switcher button').forEach(button => {
+        button.addEventListener('click', () => {
+            setMonitorColumns(button.dataset.columns);
+        });
+    });
+    setMonitorColumns(localStorage.getItem(MONITOR_LAYOUT_KEY) || '4');
+}
+
 function checkStreamStatus(videoElement, statusElement) {
     if (videoElement.readyState >= 3 && !videoElement.paused && !videoElement.ended) {
         statusElement.className = 'status online';
@@ -441,4 +472,5 @@ function renderStreams() {
     }).join('');
 }
 
+setupMonitorLayout();
 loadStreams();
