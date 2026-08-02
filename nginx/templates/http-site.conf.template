@@ -4,7 +4,16 @@ server {
     listen [::]:80;
     server_name @@SERVER_NAMES@@;
 
-    return 301 https://$host$request_uri;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/lib/letsencrypt;
+        default_type text/plain;
+        auth_basic off;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
 }
 
 server {
