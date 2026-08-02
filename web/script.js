@@ -1,5 +1,5 @@
-const streamStats = {};
 let streams = [];
+let nodeMetrics = null;
 
 const MONITOR_LAYOUT_KEY = 'cricket-monitor-columns';
 
@@ -32,61 +32,69 @@ function setupMonitorLayout() {
     setMonitorColumns(localStorage.getItem(MONITOR_LAYOUT_KEY) || '4');
 }
 
-function checkStreamStatus(videoElement, statusElement) {
-    if (videoElement.readyState >= 3 && !videoElement.paused && !videoElement.ended) {
-        statusElement.className = 'status online';
-        statusElement.textContent = '🟢 Live';
+function getPlaceMetrics(prefix) {
+    const application = nodeMetrics?.rtmp?.applications?.[`place${prefix}`];
+    const candidates = application?.stream_metrics || [];
+    const source = candidates.find(item => item.publishers > 0) || candidates[0] || null;
+    const hls = nodeMetrics?.hls?.places?.[String(prefix)] || null;
+    return { source, hls };
+}
+
+function updateStreamStatus(stream) {
+    const status = document.getElementById(stream.statusId);
+    if (!status) return;
+    const { hls } = getPlaceMetrics(stream.prefix);
+    if (hls?.state === 'active') {
+        status.className = 'status online';
+        status.textContent = 'Live';
+    } else if (hls?.state === 'stale') {
+        status.className = 'status stale';
+        status.textContent = 'Stale';
     } else {
-        statusElement.className = 'status offline';
-        statusElement.textContent = '⚫ Offline';
+        status.className = 'status offline';
+        status.textContent = 'Offline';
     }
 }
 
-function setupFpsCounter(video, streamId) {
-    if (!streamStats[streamId]) {
-        streamStats[streamId] = {
-            frameCount: 0,
-            lastFpsUpdate: performance.now(),
-            currentFps: 0,
-            totalBytes: 0,
-            lastBitrateUpdate: performance.now(),
-            currentBitrate: 0,
-            lastTotalFrames: 0,
-            lastDataUpdate: Date.now()
-        };
-    }
-    
-    const stats = streamStats[streamId];
-    
-    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-        function countFrame(now, metadata) {
-            stats.frameCount++;
-            const elapsed = (now - stats.lastFpsUpdate) / 1000;
-            if (elapsed >= 2) {
-                stats.currentFps = stats.frameCount / elapsed;
-                stats.frameCount = 0;
-                stats.lastFpsUpdate = now;
-                stats.lastDataUpdate = Date.now();
-            }
-            video.requestVideoFrameCallback(countFrame);
-        }
-        video.requestVideoFrameCallback(countFrame);
-    } else {
-        setInterval(() => {
-            if (typeof video.getVideoPlaybackQuality === 'function') {
-                const quality = video.getVideoPlaybackQuality();
-                const now = performance.now();
-                const elapsed = (now - stats.lastFpsUpdate) / 1000;
-                if (elapsed >= 2) {
-                    const frameDelta = quality.totalVideoFrames - (stats.lastTotalFrames || 0);
-                    stats.currentFps = frameDelta / elapsed;
-                    stats.lastTotalFrames = quality.totalVideoFrames;
-                    stats.lastFpsUpdate = now;
-                    stats.lastDataUpdate = Date.now();
-                }
-            }
-        }, 2000);
-    }
+function setMetric(prefix, name, value, className = 'tech-value') {
+    const element = document.getElementById(`${name}${prefix}`);
+    if (!element) return;
+    element.textContent = value ?? '-';
+    element.className = className;
+}
+
+function formatBitrate(value) {
+    return Number.isFinite(value) ? `${(value / 1000000).toFixed(2)} Mbps` : '-';
+}
+
+function formatUptime(value) {
+    if (!Number.isFinite(value)) return '-';
+    const total = Math.max(0, Math.floor(value));
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const clock = [hours, minutes, seconds]
+        .map(part => String(part).padStart(2, '0'))
+        .join(':');
+    return days ? `${days}d ${clock}` : clock;
+}
+
+function formatVideoCodec(video) {
+    if (!video?.codec) return '-';
+    const codec = video.codec.toUpperCase() === 'H264' ? 'H.264' : video.codec;
+    return [codec, video.profile, video.level ? `L${video.level}` : null]
+        .filter(Boolean)
+        .join(' · ');
+}
+
+function formatAudioCodec(audio) {
+    if (!audio?.codec) return '-';
+    const rate = Number.isFinite(audio.sample_rate_hz)
+        ? `${(audio.sample_rate_hz / 1000).toFixed(1).replace('.0', '')} kHz`
+        : null;
+    const channels = Number.isFinite(audio.channels) ? `${audio.channels} ch` : null;
+    return [audio.codec, audio.profile, rate, channels].filter(Boolean).join(' · ');
 }
 
 function getColorClass(value, thresholds, inverted = false) {
@@ -117,92 +125,40 @@ function getLatencyColorClass(value) {
 
 function updateTechInfo(stream, hls, video) {
     const p = stream.prefix;
-    const now = new Date();
-    const stats = streamStats[stream.id];
-    
-    const width = video.videoWidth || 0;
-    const height = video.videoHeight || 0;
-    const isHD = width > 1280;
-    
-    // Resolution
-    const resEl = document.getElementById(`resolution${p}`);
-    if (resEl) {
-        if (width > 0) {
-            resEl.textContent = `${width}×${height}`;
-            if (height >= 720) {
-                resEl.className = 'tech-value good';
-            } else if (height >= 480) {
-                resEl.className = 'tech-value warning';
-            } else {
-                resEl.className = 'tech-value error';
-            }
-        } else {
-            resEl.textContent = '-';
-            resEl.className = 'tech-value';
-        }
-    }
-    
-    // FPS (>20 зелёный, 15-20 жёлтый, <15 красный)
-    const fpsEl = document.getElementById(`fps${p}`);
-    if (fpsEl) {
-        if (stats && stats.currentFps > 0) {
-            const fps = stats.currentFps.toFixed(1);
-            fpsEl.textContent = `${fps} fps`;
-            fpsEl.className = getColorClass(parseFloat(fps), {good: 20, warning: 15});
-        } else {
-            fpsEl.textContent = 'measuring...';
-            fpsEl.className = 'tech-value';
-        }
-    }
-    
-    // Bitrate (зависит от разрешения)
-    const brEl = document.getElementById(`bitrate${p}`);
-    if (brEl) {
-        let bitrateValue = 0;
-        
-        if (stats && stats.currentBitrate > 0) {
-            bitrateValue = stats.currentBitrate / 1000000;
-            const mbps = bitrateValue.toFixed(2);
-            brEl.textContent = `~${mbps} Mbps (measured)`;
-        } else if (hls && hls.levels && hls.levels[hls.currentLevel] && hls.levels[hls.currentLevel].bitrate > 0) {
-            const level = hls.levels[hls.currentLevel];
-            bitrateValue = level.bitrate / 1000000;
-            brEl.textContent = `${bitrateValue.toFixed(2)} Mbps`;
-        } else {
-            brEl.textContent = '-';
-            brEl.className = 'tech-value';
-        }
-        
-        if (bitrateValue > 0) {
-            if (isHD) {
-                brEl.className = getColorClass(bitrateValue, {good: 3.5, warning: 2.5});
-            } else {
-                brEl.className = getColorClass(bitrateValue, {good: 2.0, warning: 1.5});
-            }
-        }
-    }
-    
-    // Codec
-    const codecEl = document.getElementById(`codec${p}`);
-    if (codecEl) {
-        if (hls && hls.levels && hls.levels[hls.currentLevel]) {
-            const level = hls.levels[hls.currentLevel];
-            if (level.videoCodec) {
-                let codecName = level.videoCodec;
-                if (codecName.startsWith('avc1')) codecName = 'H.264';
-                else if (codecName.startsWith('hvc1') || codecName.startsWith('hev1')) codecName = 'H.265';
-                else if (codecName.startsWith('av01')) codecName = 'AV1';
-                codecEl.textContent = codecName;
-                codecEl.className = 'tech-value good';
-            } else {
-                codecEl.textContent = 'H.264 (assumed)';
-                codecEl.className = 'tech-value good';
-            }
-        } else {
-            codecEl.textContent = 'H.264 (assumed)';
-            codecEl.className = 'tech-value good';
-        }
-    }
+    const { source, hls: serverHls } = getPlaceMetrics(p);
+    const sourceVideo = source?.video;
+    const sourceAudio = source?.audio;
+
+    setMetric(p, 'resolution', sourceVideo?.resolution?.replace('x', '×'));
+    setMetric(
+        p,
+        'fps',
+        Number.isFinite(sourceVideo?.source_fps)
+            ? `${sourceVideo.source_fps.toFixed(1)} fps`
+            : '-'
+    );
+    setMetric(p, 'bitrate', formatBitrate(source?.input_bitrate_bps));
+    setMetric(p, 'codec', formatVideoCodec(sourceVideo));
+    setMetric(p, 'audio', formatAudioCodec(sourceAudio));
+    setMetric(p, 'uptime', formatUptime(source?.uptime_seconds));
+    const rtmpDropped = source?.publisher_dropped;
+    setMetric(
+        p,
+        'dropped',
+        Number.isFinite(rtmpDropped) ? String(rtmpDropped) : '-',
+        Number.isFinite(rtmpDropped)
+            ? getColorClass(rtmpDropped, {good: 0, warning: 10}, true)
+            : 'tech-value'
+    );
+    const mediaAge = serverHls?.latest_segment_age_seconds;
+    setMetric(
+        p,
+        'lastupdate',
+        Number.isFinite(mediaAge) ? `${mediaAge.toFixed(1)}s ago` : '-',
+        Number.isFinite(mediaAge)
+            ? getColorClass(mediaAge, {good: 10, warning: 30}, true)
+            : 'tech-value'
+    );
     
     // Keyframe
     const kfEl = document.getElementById(`keyframe${p}`);
@@ -238,18 +194,18 @@ function updateTechInfo(stream, hls, video) {
         }
     }
     
-    // Dropped frames
-    const dropEl = document.getElementById(`dropped${p}`);
-    if (dropEl) {
+    // Browser playback drops are distinct from RTMP publisher drops.
+    const browserDropEl = document.getElementById(`browserdropped${p}`);
+    if (browserDropEl) {
         if (typeof video.getVideoPlaybackQuality === 'function') {
             const quality = video.getVideoPlaybackQuality();
             const dropped = quality.droppedVideoFrames || 0;
             const corrupted = quality.corruptedVideoFrames || 0;
-            dropEl.textContent = `${dropped} dropped, ${corrupted} corrupted`;
-            dropEl.className = getColorClass(dropped, {good: 1, warning: 11});
+            browserDropEl.textContent = corrupted ? `${dropped} / ${corrupted} corrupt` : String(dropped);
+            browserDropEl.className = getColorClass(dropped, {good: 0, warning: 10}, true);
         } else {
-            dropEl.textContent = 'N/A';
-            dropEl.className = 'tech-value';
+            browserDropEl.textContent = 'N/A';
+            browserDropEl.className = 'tech-value';
         }
     }
     
@@ -266,24 +222,7 @@ function updateTechInfo(stream, hls, video) {
         }
     }
     
-    // Last update (показываем сколько секунд назад обновлялись данные)
-    const updEl = document.getElementById(`lastupdate${p}`);
-    if (updEl) {
-        if (stats && stats.lastDataUpdate) {
-            const secondsAgo = Math.floor((Date.now() - stats.lastDataUpdate) / 1000);
-            updEl.textContent = `${secondsAgo}s ago`;
-            if (secondsAgo <= 5) {
-                updEl.className = 'tech-value good';
-            } else if (secondsAgo <= 10) {
-                updEl.className = 'tech-value warning';
-            } else {
-                updEl.className = 'tech-value error';
-            }
-        } else {
-            updEl.textContent = '-';
-            updEl.className = 'tech-value';
-        }
-    }
+    updateStreamStatus(stream);
 }
 
 function initStream(stream) {
@@ -306,32 +245,6 @@ function initStream(stream) {
             video.play().catch(e => {});
         });
         
-        hls.on(Hls.Events.FRAG_LOADED, function(event, data) {
-            if (streamStats[stream.id]) {
-                const stats = streamStats[stream.id];
-                let fragmentSize = 0;
-                
-                if (data.frag && data.frag.stats && data.frag.stats.total) {
-                    fragmentSize = data.frag.stats.total;
-                } else if (data.frag && data.frag.data) {
-                    fragmentSize = data.frag.data.byteLength;
-                } else if (data.payload) {
-                    fragmentSize = data.payload.byteLength;
-                }
-                
-                if (fragmentSize > 0) {
-                    stats.totalBytes += fragmentSize;
-                    const now = performance.now();
-                    const elapsed = (now - stats.lastBitrateUpdate) / 1000;
-                    if (elapsed >= 3) {
-                        stats.currentBitrate = (stats.totalBytes * 8) / elapsed;
-                        stats.totalBytes = 0;
-                        stats.lastBitrateUpdate = now;
-                    }
-                }
-            }
-        });
-        
         hls.on(Hls.Events.ERROR, function(event, data) {
             if (data.fatal) {
                 status.className = 'status offline';
@@ -339,12 +252,8 @@ function initStream(stream) {
             }
         });
         
-        setupFpsCounter(video, stream.id);
-        
         setInterval(() => {
-            if (video.readyState >= 2) {
-                updateTechInfo(stream, hls, video);
-            }
+            updateTechInfo(stream, hls, video);
         }, 2000);
         
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -353,26 +262,33 @@ function initStream(stream) {
             video.play().catch(e => {});
         });
         
-        setupFpsCounter(video, stream.id);
-        
         setInterval(() => {
-            if (video.readyState >= 2) {
-                updateTechInfo(stream, null, video);
-            }
+            updateTechInfo(stream, null, video);
         }, 2000);
     }
-    
-    setInterval(() => checkStreamStatus(video, status), 5000);
-    video.addEventListener('playing', () => checkStreamStatus(video, status));
-    video.addEventListener('pause', () => checkStreamStatus(video, status));
-    video.addEventListener('ended', () => checkStreamStatus(video, status));
-    
+
+    updateTechInfo(stream, null, video);
+}
+
+async function refreshNodeMetrics() {
+    try {
+        const response = await fetch('/api/node/metrics', {cache: 'no-store'});
+        if (!response.ok) throw new Error(`Metrics HTTP ${response.status}`);
+        nodeMetrics = await response.json();
+        streams.forEach(stream => updateStreamStatus(stream));
+    } catch (error) {
+        console.warn('Server metrics are temporarily unavailable:', error);
+    }
 }
 
 async function loadStreams() {
     try {
-        const response = await fetch('/api/fields');
-        const fieldsData = await response.json();
+        const [fieldsResponse] = await Promise.all([
+            fetch('/api/fields'),
+            refreshNodeMetrics(),
+        ]);
+        if (!fieldsResponse.ok) throw new Error(`Fields HTTP ${fieldsResponse.status}`);
+        const fieldsData = await fieldsResponse.json();
         
         streams = Object.entries(fieldsData)
             .filter(([id]) => {
@@ -456,14 +372,17 @@ function renderStreams() {
                     <div class="panel-title">Technical information</div>
                     <div class="tech-info" id="tech${stream.prefix}">
                         <div class="tech-row"><span class="tech-label">Resolution</span><span class="tech-value" id="resolution${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">FPS</span><span class="tech-value" id="fps${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Bitrate</span><span class="tech-value" id="bitrate${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Codec</span><span class="tech-value" id="codec${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Source FPS</span><span class="tech-value" id="fps${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Input bitrate</span><span class="tech-value" id="bitrate${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Video codec</span><span class="tech-value" id="codec${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Audio codec</span><span class="tech-value" id="audio${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Uptime</span><span class="tech-value" id="uptime${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">RTMP dropped</span><span class="tech-value" id="dropped${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Last media</span><span class="tech-value" id="lastupdate${stream.prefix}">-</span></div>
                         <div class="tech-row"><span class="tech-label">HLS segment</span><span class="tech-value" id="keyframe${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Player buffer</span><span class="tech-value" id="buffer${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Dropped frames</span><span class="tech-value" id="dropped${stream.prefix}">-</span></div>
                         <div class="tech-row"><span class="tech-label">HLS latency</span><span class="tech-value" id="latency${stream.prefix}">-</span></div>
-                        <div class="tech-row"><span class="tech-label">Last update</span><span class="tech-value" id="lastupdate${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Player buffer</span><span class="tech-value" id="buffer${stream.prefix}">-</span></div>
+                        <div class="tech-row"><span class="tech-label">Browser dropped</span><span class="tech-value" id="browserdropped${stream.prefix}">-</span></div>
                     </div>
                 </div>
             </div>
@@ -474,3 +393,4 @@ function renderStreams() {
 
 setupMonitorLayout();
 loadStreams();
+setInterval(refreshNodeMetrics, 5000);
