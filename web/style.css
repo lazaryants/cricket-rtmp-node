@@ -299,6 +299,12 @@ body {
     color: var(--success);
 }
 
+.status.stale {
+    background: rgba(255, 190, 92, 0.09);
+    border-color: rgba(255, 190, 92, 0.3);
+    color: var(--warning);
+}
+
 .status.offline {
     background: rgba(255, 107, 107, 0.08);
     border-color: rgba(255, 107, 107, 0.25);
