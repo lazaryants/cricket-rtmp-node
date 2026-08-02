@@ -153,7 +153,8 @@ body {
 .grid {
     display: grid;
     gap: 14px;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 540px));
+    justify-content: center;
     margin: 0 auto;
     max-width: 1840px;
 }
