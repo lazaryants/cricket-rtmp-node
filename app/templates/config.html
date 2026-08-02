@@ -199,19 +199,32 @@
             .nav-menu { flex-wrap: wrap; }
             .nav-menu a { flex: 1; text-align: center; }
         }
+        {% include 'theme.css' %}
     </style>
 </head>
 <body>
     <div class="container">
-        <nav class="nav-menu">
-            <a href="/">📺 Monitoring</a>
-            <a href="/config/" class="active">⚙️ Configuration</a>
-            <a href="/admin/">🎛️ Restream Control</a>
-        </nav>
-        
-        <div class="header">
-            <h1>⚙️ Stream Configuration</h1>
-            <p>Manage cricket field streams</p>
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-mark" aria-hidden="true">🏏</span>
+                <div>
+                    <div class="brand-title">Cricket RTMP Node</div>
+                    <div class="brand-subtitle">Receiving and distribution server</div>
+                </div>
+            </div>
+            <nav class="nav-menu" aria-label="Main navigation">
+                <a href="/">Monitoring</a>
+                <a href="/config/" class="active">Configuration</a>
+                <a href="/admin/">Restreams</a>
+            </nav>
+        </header>
+
+        <div class="page-heading">
+            <div>
+                <h1>Stream configuration</h1>
+                <p>Manage receiving fields and publish settings</p>
+            </div>
+            <span class="page-badge">16 field slots</span>
         </div>
         <div id="alert" class="alert"></div>
         <div class="toolbar">
