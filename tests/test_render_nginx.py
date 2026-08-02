@@ -42,6 +42,10 @@ class RenderNginxTests(unittest.TestCase):
         self.assertLess(rtmp.index("rtmp_auto_push on;"), rtmp.index("rtmp {"))
         self.assertIn("application place15", rtmp)
         self.assertIn("rtmp.example.test node.example.test", http)
+        self.assertIn("location ^~ /.well-known/acme-challenge/", http)
+        self.assertIn("root /var/lib/letsencrypt;", http)
+        self.assertIn("auth_basic off;", http)
+        self.assertIn("return 301 https://$host$request_uri;", http)
         self.assertNotIn("@@", rtmp + http)
 
     def test_rejects_unsafe_path(self):
