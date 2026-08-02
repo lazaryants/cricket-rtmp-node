@@ -7,7 +7,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
 
-from app.monitoring import health_snapshot, metrics_snapshot, parse_rtmp_stat
+from app.monitoring import (
+    health_snapshot,
+    merge_rtmp_snapshot,
+    metrics_snapshot,
+    parse_rtmp_stat,
+)
 from app.settings import Settings
 
 
@@ -175,6 +180,63 @@ class MonitoringTests(unittest.TestCase):
         self.assertIsNone(stream["video"]["resolution"])
         self.assertIsNone(stream["audio"]["codec"])
         self.assertEqual(stream["publisher_dropped"], 0)
+
+    def test_worker_local_snapshots_are_merged_until_hls_has_no_signal(self):
+        cache = {}
+        active_hls = {
+            "places": {
+                "8": {"state": "active"},
+                "16": {"state": "active"},
+            },
+        }
+        worker_one = {
+            "reachable": True,
+            "active_streams": 1,
+            "clients": 1,
+            "applications": {
+                "place8": {
+                    "streams": 1,
+                    "clients": 1,
+                    "stream_metrics": [{"publishers": 1}],
+                },
+            },
+        }
+        worker_two = {
+            "reachable": True,
+            "active_streams": 1,
+            "clients": 2,
+            "applications": {
+                "place16": {
+                    "streams": 1,
+                    "clients": 2,
+                    "stream_metrics": [{"publishers": 1}],
+                },
+            },
+        }
+
+        first = merge_rtmp_snapshot(worker_one, active_hls, cache)
+        second = merge_rtmp_snapshot(worker_two, active_hls, cache)
+
+        self.assertEqual(set(first["applications"]), {"place8"})
+        self.assertEqual(
+            set(second["applications"]),
+            {"place8", "place16"},
+        )
+        self.assertEqual(second["active_streams"], 2)
+        self.assertEqual(second["clients"], 3)
+
+        no_signal_hls = {
+            "places": {
+                "8": {"state": "no_signal"},
+                "16": {"state": "active"},
+            },
+        }
+        third = merge_rtmp_snapshot(
+            {"reachable": True, "applications": {}},
+            no_signal_hls,
+            cache,
+        )
+        self.assertEqual(set(third["applications"]), {"place16"})
 
 
 if __name__ == "__main__":
