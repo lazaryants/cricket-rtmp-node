@@ -146,8 +146,8 @@
 
     function mountSwitcher() {
         if (document.querySelector('.language-switcher')) return;
-        const host = document.querySelector('.heading-actions')
-            || document.querySelector('.topbar')
+        const host = document.querySelector('.topbar')
+            || document.querySelector('.heading-actions')
             || document.body;
         const switcher = document.createElement('div');
         switcher.className = 'language-switcher';
@@ -157,7 +157,7 @@
             const button = event.target.closest('button[data-language]');
             if (button) setLanguage(button.dataset.language);
         });
-        host.prepend(switcher);
+        host.append(switcher);
         updateSwitcher();
     }
 
