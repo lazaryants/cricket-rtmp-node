@@ -17,6 +17,35 @@
     --radius: 10px;
 }
 
+.language-switcher {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-soft);
+}
+
+.language-switcher button {
+    min-width: 34px;
+    height: 26px;
+    padding: 0 7px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.language-switcher button.active {
+    background: var(--primary);
+    color: #07111f;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -44,6 +73,12 @@ body {
     margin: 0 auto;
     max-width: 1840px;
     min-height: 64px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: rgba(9, 20, 38, 0.94);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }
 
 .brand {
@@ -608,16 +643,24 @@ summary {
     }
 
     .topbar {
-        align-items: flex-start;
-        flex-direction: column;
+        align-items: center;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 9px;
         padding: 12px 0;
     }
 
     .nav-menu {
         display: grid;
+        grid-column: 1 / -1;
+        grid-row: 2;
         grid-template-columns: repeat(3, 1fr);
         width: 100%;
+    }
+
+    .language-switcher {
+        grid-column: 2;
+        grid-row: 1;
     }
 
     .nav-menu a {
