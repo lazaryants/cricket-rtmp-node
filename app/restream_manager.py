@@ -88,8 +88,8 @@ def serialized_config_write(function):
             return function(*args, **kwargs)
     return wrapped
 
-def get_process_status(pid_file):
-    """Проверяет статус процесса по PID файлу"""
+def get_process_status(pid_file, include_resources=True):
+    """Check an FFmpeg PID file, optionally collecting slower resource data."""
     if not os.path.exists(pid_file):
         return {'status': 'stopped', 'pid': None, 'uptime': 0}
     
@@ -103,19 +103,21 @@ def get_process_status(pid_file):
             and process.status() != psutil.STATUS_ZOMBIE
             and "ffmpeg" in process.name().lower()
         ):
-            create_time = process.create_time()
-            uptime = int(time.time() - create_time)
-            cpu_percent = process.cpu_percent(interval=0.1)
-            memory_info = process.memory_info()
-            memory_mb = memory_info.rss / 1024 / 1024
-            
-            return {
+            result = {
                 'status': 'running',
                 'pid': pid,
-                'uptime': uptime,
-                'cpu': cpu_percent,
-                'memory': round(memory_mb, 2)
+                'uptime': int(time.time() - process.create_time()),
             }
+            if include_resources:
+                memory_info = process.memory_info()
+                result.update({
+                    'cpu': process.cpu_percent(interval=0.1),
+                    'memory': round(
+                        memory_info.rss / 1024 / 1024,
+                        2,
+                    ),
+                })
+            return result
     except (OSError, psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
         # Runtime files belong to the dedicated supervisor. The manager is
         # deliberately read-only here and must tolerate stale PID files.
@@ -123,14 +125,30 @@ def get_process_status(pid_file):
     
     return {'status': 'stopped', 'pid': None, 'uptime': 0}
 
+def read_log_tail(log_file, line_count=100, max_bytes=131072):
+    """Read only a bounded tail instead of loading an unbounded FFmpeg log."""
+    path = os.fspath(log_file)
+    with open(path, 'rb') as source:
+        source.seek(0, os.SEEK_END)
+        size = source.tell()
+        source.seek(max(0, size - max_bytes))
+        payload = source.read(max_bytes)
+
+    text = payload.decode('utf-8', errors='replace')
+    lines = text.splitlines()
+    # A bounded read may start in the middle of a line.
+    if size > max_bytes and lines:
+        lines = lines[1:]
+    return lines[-line_count:]
+
+
 def get_delay_info(log_file):
     """Анализирует логи на предмет задержки"""
     if not os.path.exists(log_file):
         return {'delay': 0, 'drops': 0, 'errors': []}
     
     try:
-        with open(log_file, 'r') as f:
-            lines = f.readlines()[-100:]
+        lines = read_log_tail(log_file, line_count=100)
         
         drops = 0
         errors = []
@@ -164,7 +182,7 @@ def get_fields():
         
         fields[int(field_id)] = {
             'name': field_data.get('name', f'Field {field_id}'),
-            'source': f'{SETTINGS.local_hls_origin}/place{field_id}/{stream_key}.m3u8',
+            'source': f'{SETTINGS.local_rtmp_origin}/place{field_id}/{stream_key}',
             'urls': urls,
             'pid_files': [str(SETTINGS.pid_file(field_id, i)) for i in range(len(urls))],
             'log_files': [str(SETTINGS.log_file(field_id, i)) for i in range(len(urls))]
@@ -222,6 +240,43 @@ def index():
         }
     
     return render_template('index.html', fields=fields_status)
+
+
+@app.route('/api/status')
+def api_restream_status():
+    """Return a secret-free status snapshot for dynamic admin updates."""
+    fields_status = {}
+
+    for field_id, field in get_fields().items():
+        destinations = []
+        running_count = 0
+
+        for url_index, _url in enumerate(field['urls']):
+            process = get_process_status(
+                SETTINGS.pid_file(field_id, url_index),
+                include_resources=False,
+            )
+            if process['status'] == 'running':
+                running_count += 1
+
+            destinations.append({
+                'index': url_index,
+                'status': process['status'],
+                'uptime': process.get('uptime', 0),
+                'cpu': process.get('cpu'),
+                'memory': process.get('memory'),
+            })
+
+        fields_status[str(field_id)] = {
+            'running_count': running_count,
+            'total_count': len(destinations),
+            'destinations': destinations,
+        }
+
+    return jsonify({
+        'success': True,
+        'fields': fields_status,
+    })
 
 
 # ===== RESTREAM API =====
@@ -282,11 +337,13 @@ def api_logs_specific(field_id, url_index):
         return jsonify({'logs': []})
     
     try:
-        with open(log_file, 'r') as f:
-            lines = [
-                redact_rtmp_urls(line)
-                for line in f.readlines()[-50:]
-            ]
+        lines = [
+            redact_rtmp_urls(line)
+            for line in read_log_tail(
+                log_file,
+                line_count=50,
+            )
+        ]
         return jsonify({'logs': lines})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
