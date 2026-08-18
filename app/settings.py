@@ -41,6 +41,12 @@ class Settings:
             "http://127.0.0.1/hls",
         ).rstrip("/"),
     )
+    local_rtmp_origin: str = field(
+        default_factory=lambda: os.environ.get(
+            "CRICKET_RTMP_LOCAL_RTMP_ORIGIN",
+            "rtmp://127.0.0.1",
+        ).rstrip("/"),
+    )
     rtmp_stat_url: str = field(
         default_factory=lambda: os.environ.get(
             "CRICKET_RTMP_STAT_URL",
