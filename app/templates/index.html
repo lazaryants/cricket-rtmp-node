@@ -99,7 +99,10 @@
             font-weight: bold;
         }
         .url-status.running { background: rgba(76, 175, 80, 0.3); border: 2px solid #4CAF50; }
-        .url-status.stopped { background: rgba(244, 67, 54, 0.3); border: 2px solid #f44336; }
+        .url-status.stopped { background: rgba(158, 158, 158, 0.3); border: 2px solid #9e9e9e; }
+        .url-status.starting,
+        .url-status.stopping { background: rgba(255, 152, 0, 0.3); border: 2px solid #ff9800; }
+        .url-status.error { background: rgba(244, 67, 54, 0.3); border: 2px solid #f44336; }
         
         .url-input-row {
             display: flex;
@@ -170,6 +173,93 @@
         }
         .log-line { padding: 2px 0; word-break: break-all; }
         .log-error { color: #f44336; }
+
+        .dialog-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            background: rgba(3, 12, 28, 0.72);
+            backdrop-filter: blur(5px);
+        }
+        .dialog-backdrop[hidden] { display: none; }
+        .dialog-panel {
+            width: min(560px, 100%);
+            padding: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 16px;
+            background: #10243f;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+        }
+        .dialog-title { margin-bottom: 8px; font-size: 1.3rem; }
+        .dialog-message {
+            margin-bottom: 16px;
+            color: rgba(255, 255, 255, 0.76);
+            line-height: 1.45;
+        }
+        .dialog-input-group { margin-bottom: 12px; }
+        .dialog-input-group[hidden] { display: none; }
+        .dialog-label {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+        .dialog-input {
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.24);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            color: white;
+            font-family: 'Courier New', monospace;
+        }
+        .dialog-input:focus {
+            outline: 2px solid #64B5F6;
+            border-color: transparent;
+        }
+        .dialog-error {
+            min-height: 20px;
+            margin-bottom: 8px;
+            color: #ff8a80;
+            font-size: 0.85rem;
+        }
+        .dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .dialog-confirm { background: #4CAF50; color: white; }
+        .dialog-confirm.danger { background: #f44336; }
+        .dialog-cancel { background: rgba(255,255,255,0.14); color: white; }
+
+        .toast-region {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1100;
+            display: grid;
+            gap: 10px;
+            width: min(380px, calc(100vw - 40px));
+            pointer-events: none;
+        }
+        .toast {
+            padding: 12px 14px;
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 10px;
+            background: #16304f;
+            color: white;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+            animation: toast-in 0.2s ease-out;
+        }
+        .toast.success { border-color: #4CAF50; }
+        .toast.error { border-color: #f44336; }
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         
         @media (max-width: 768px) {
             .grid { grid-template-columns: 1fr; }
@@ -217,21 +307,25 @@
             <div class="card-header">
                 <h3>🏟️ {{ field.name }}</h3>
                 {% if field.total_count == 0 %}
-                    <span class="overall-status no-urls">No URLs</span>
+                    <span id="overall-status-{{ field_id }}" class="overall-status no-urls">No URLs</span>
                 {% elif field.running_count == field.total_count %}
-                    <span class="overall-status all-running">🟢 {{ field.running_count }}/{{ field.total_count }}</span>
+                    <span id="overall-status-{{ field_id }}" class="overall-status all-running">🟢 {{ field.running_count }}/{{ field.total_count }}</span>
                 {% elif field.running_count > 0 %}
-                    <span class="overall-status partial">🟠 {{ field.running_count }}/{{ field.total_count }}</span>
+                    <span id="overall-status-{{ field_id }}" class="overall-status partial">🟠 {{ field.running_count }}/{{ field.total_count }}</span>
                 {% else %}
-                    <span class="overall-status all-stopped">⚫ 0/{{ field.total_count }}</span>
+                    <span id="overall-status-{{ field_id }}" class="overall-status all-stopped">⚫ 0/{{ field.total_count }}</span>
                 {% endif %}
             </div>
 
             {% for url_data in field.urls %}
-            <div class="url-item" id="url-{{ field_id }}-{{ url_data.index }}">
+            <div class="url-item"
+                 id="url-{{ field_id }}-{{ url_data.index }}"
+                 data-field-id="{{ field_id }}"
+                 data-url-index="{{ url_data.index }}">
                 <div class="url-header">
                     <span class="url-number">Destination #{{ url_data.index + 1 }}</span>
-                    <span class="url-status {% if url_data.status.status == 'running' %}running{% else %}stopped{% endif %}">
+                    <span id="url-status-{{ field_id }}-{{ url_data.index }}"
+                          class="url-status {% if url_data.status.status == 'running' %}running{% else %}stopped{% endif %}">
                         {% if url_data.status.status == 'running' %}
                             🟢 RUNNING
                         {% else %}
@@ -250,12 +344,14 @@
                 </div>
                 
                 <div class="url-actions">
-                    <button class="btn btn-start" 
+                    <button class="btn btn-start"
+                            id="start-{{ field_id }}-{{ url_data.index }}"
                             onclick="controlUrl({{ field_id }}, {{ url_data.index }}, 'start')"
                             {% if url_data.status.status == 'running' or not url_data.url %}disabled{% endif %}>
                         ▶ Start
                     </button>
-                    <button class="btn btn-stop" 
+                    <button class="btn btn-stop"
+                            id="stop-{{ field_id }}-{{ url_data.index }}"
                             onclick="controlUrl({{ field_id }}, {{ url_data.index }}, 'stop')"
                             {% if url_data.status.status != 'running' %}disabled{% endif %}>
                         ⏹ Stop
@@ -277,12 +373,14 @@
             
             {% if field.total_count > 0 %}
             <div class="global-actions">
-                <button class="btn btn-global" 
+                <button class="btn btn-global"
+                        id="start-all-{{ field_id }}"
                         onclick="controlAll({{ field_id }}, 'start')"
                         {% if field.running_count == field.total_count %}disabled{% endif %}>
                     ▶ Start All
                 </button>
-                <button class="btn btn-global" 
+                <button class="btn btn-global"
+                        id="stop-all-{{ field_id }}"
                         onclick="controlAll({{ field_id }}, 'stop')"
                         {% if field.running_count == 0 %}disabled{% endif %}>
                     ⏹ Stop All
@@ -293,8 +391,49 @@
         {% endfor %}
     </div>
 
+    <div class="toast-region"
+         id="toastRegion"
+         role="status"
+         aria-live="polite"></div>
+
+    <div class="dialog-backdrop" id="dialogBackdrop" hidden>
+        <div class="dialog-panel"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="dialogTitle"
+             aria-describedby="dialogMessage">
+            <form id="dialogForm">
+                <h2 class="dialog-title" id="dialogTitle"></h2>
+                <p class="dialog-message" id="dialogMessage"></p>
+                <div class="dialog-input-group" id="dialogInputGroup" hidden>
+                    <label class="dialog-label"
+                           for="dialogInput">Destination URL</label>
+                    <input class="dialog-input"
+                           id="dialogInput"
+                           type="text"
+                           autocomplete="off"
+                           spellcheck="false">
+                </div>
+                <div class="dialog-error"
+                     id="dialogError"
+                     aria-live="assertive"></div>
+                <div class="dialog-actions">
+                    <button class="btn dialog-cancel"
+                            id="dialogCancel"
+                            type="button">Cancel</button>
+                    <button class="btn dialog-confirm"
+                            id="dialogConfirm"
+                            type="submit">Continue</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const RESTREAM_LAYOUT_KEY = 'cricket-restream-columns';
+        const RESTREAM_STATUS_INTERVAL_MS = 3000;
+        const RESTREAM_ACTION_TIMEOUT_MS = 20000;
+        const pendingRestreamActions = new Map();
         function setRestreamColumns(value) {
             const columns = ['2', '3', '4'].includes(String(value))
                 ? String(value)
@@ -321,109 +460,461 @@
             );
         }
 
-        async function saveUrl(fieldId, urlIndex) {
-            const input = document.getElementById(`input-${fieldId}-${urlIndex}`);
-            const newUrl = input.value.trim();
-            
+        let activeDialog = null;
+
+        function showToast(message, type = 'success') {
+            const region = document.getElementById('toastRegion');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            region.appendChild(toast);
+            setTimeout(() => toast.remove(), 4500);
+        }
+
+        function closeDialog(value) {
+            const backdrop = document.getElementById('dialogBackdrop');
+            backdrop.hidden = true;
+            const current = activeDialog;
+            activeDialog = null;
+            current?.resolve(value);
+        }
+
+        function showDialog(options) {
+            if (activeDialog) closeDialog(null);
+
+            const backdrop = document.getElementById('dialogBackdrop');
+            const title = document.getElementById('dialogTitle');
+            const message = document.getElementById('dialogMessage');
+            const inputGroup = document.getElementById('dialogInputGroup');
+            const input = document.getElementById('dialogInput');
+            const error = document.getElementById('dialogError');
+            const confirmButton = document.getElementById('dialogConfirm');
+
+            title.textContent = options.title;
+            message.textContent = options.message || '';
+            inputGroup.hidden = !options.input;
+            input.value = options.value || '';
+            input.placeholder = options.placeholder || '';
+            error.textContent = '';
+            confirmButton.textContent = options.confirmLabel || 'Continue';
+            confirmButton.classList.toggle(
+                'danger',
+                Boolean(options.danger)
+            );
+            backdrop.hidden = false;
+
+            return new Promise(resolve => {
+                activeDialog = {
+                    resolve,
+                    input: Boolean(options.input),
+                    validate: options.validate || null,
+                };
+                requestAnimationFrame(() => {
+                    (options.input ? input : confirmButton).focus();
+                });
+            });
+        }
+
+        function validateDestinationUrl(value) {
+            if (!value) return 'Enter a destination URL.';
+            if (!/^rtmps?:\/\/\S+$/i.test(value)) {
+                return 'The URL must start with rtmp:// or rtmps://.';
+            }
+            return '';
+        }
+
+        async function requestJson(url, options = {}) {
+            const response = await fetch(url, options);
+            let payload = {};
             try {
-                let response;
-                if (newUrl) {
-                    response = await fetch(`/admin/api/restream-urls/${fieldId}/${urlIndex}`, {
+                payload = await response.json();
+            } catch (error) {
+                throw new Error(`Unexpected HTTP ${response.status} response`);
+            }
+            if (!response.ok || payload.success === false) {
+                throw new Error(
+                    payload.message || `HTTP ${response.status}`
+                );
+            }
+            return payload;
+        }
+
+        function setupLogDetails(scope = document) {
+            scope.querySelectorAll('details').forEach(details => {
+                if (details.dataset.logsReady === '1') return;
+                details.dataset.logsReady = '1';
+                details.addEventListener('toggle', function() {
+                    if (!this.open) return;
+                    const logs = this.querySelector('.logs');
+                    if (!logs) return;
+                    const parts = logs.id.replace('logs-', '').split('-');
+                    loadLogs(parts[0], parts[1]);
+                });
+            });
+        }
+
+        async function refreshFieldCard(fieldId) {
+            const response = await fetch('/admin/', {cache: 'no-store'});
+            if (!response.ok) {
+                throw new Error(`Page refresh HTTP ${response.status}`);
+            }
+            const html = await response.text();
+            const documentCopy = new DOMParser().parseFromString(
+                html,
+                'text/html'
+            );
+            const replacement = documentCopy.getElementById(
+                `field-${fieldId}`
+            );
+            const current = document.getElementById(`field-${fieldId}`);
+            if (!replacement || !current) {
+                throw new Error('Updated field card was not found');
+            }
+
+            current.replaceWith(replacement);
+            Array.from(pendingRestreamActions.keys())
+                .filter(key => key.startsWith(`${fieldId}:`))
+                .forEach(key => pendingRestreamActions.delete(key));
+            setupLogDetails(replacement);
+            setRestreamColumns(
+                localStorage.getItem(RESTREAM_LAYOUT_KEY) || '4'
+            );
+            await refreshRestreamStatus();
+        }
+
+        function destinationKey(fieldId, urlIndex) {
+            return `${fieldId}:${urlIndex}`;
+        }
+
+        function setDestinationState(fieldId, urlIndex, state) {
+            const status = document.getElementById(
+                `url-status-${fieldId}-${urlIndex}`
+            );
+            const startButton = document.getElementById(
+                `start-${fieldId}-${urlIndex}`
+            );
+            const stopButton = document.getElementById(
+                `stop-${fieldId}-${urlIndex}`
+            );
+            if (!status) return;
+
+            const labels = {
+                running: '🟢 RUNNING',
+                stopped: '⚫ STOPPED',
+                starting: '🟠 STARTING',
+                stopping: '🟠 STOPPING',
+                error: '🔴 ERROR',
+            };
+            status.className = `url-status ${state}`;
+            status.textContent = labels[state] || labels.stopped;
+
+            const busy = state === 'starting' || state === 'stopping';
+            if (startButton) {
+                startButton.disabled = busy || state === 'running';
+            }
+            if (stopButton) {
+                stopButton.disabled = busy || state !== 'running';
+            }
+        }
+
+        function updateFieldSummary(fieldId, runningCount, totalCount) {
+            const status = document.getElementById(
+                `overall-status-${fieldId}`
+            );
+            if (!status) return;
+
+            if (totalCount === 0) {
+                status.className = 'overall-status no-urls';
+                status.textContent = 'No URLs';
+            } else if (runningCount === totalCount) {
+                status.className = 'overall-status all-running';
+                status.textContent = `🟢 ${runningCount}/${totalCount}`;
+            } else if (runningCount > 0) {
+                status.className = 'overall-status partial';
+                status.textContent = `🟠 ${runningCount}/${totalCount}`;
+            } else {
+                status.className = 'overall-status all-stopped';
+                status.textContent = `⚫ 0/${totalCount}`;
+            }
+
+            const startAll = document.getElementById(
+                `start-all-${fieldId}`
+            );
+            const stopAll = document.getElementById(
+                `stop-all-${fieldId}`
+            );
+            const fieldBusy = Array.from(
+                pendingRestreamActions.entries()
+            ).some(([key, action]) => (
+                key.startsWith(`${fieldId}:`)
+                && (
+                    action.state === 'starting'
+                    || action.state === 'stopping'
+                )
+            ));
+            if (startAll) {
+                startAll.disabled = (
+                    fieldBusy
+                    || runningCount === totalCount
+                );
+            }
+            if (stopAll) {
+                stopAll.disabled = fieldBusy || runningCount === 0;
+            }
+        }
+
+        async function refreshRestreamStatus() {
+            try {
+                const response = await fetch('/admin/api/status', {
+                    cache: 'no-store'
+                });
+                if (!response.ok) {
+                    throw new Error(`Status HTTP ${response.status}`);
+                }
+
+                const payload = await response.json();
+                Object.entries(payload.fields || {}).forEach(
+                    ([fieldId, field]) => {
+                        updateFieldSummary(
+                            fieldId,
+                            field.running_count,
+                            field.total_count
+                        );
+
+                        (field.destinations || []).forEach(destination => {
+                            const key = destinationKey(
+                                fieldId,
+                                destination.index
+                            );
+                            const pending = pendingRestreamActions.get(key);
+                            let state = destination.status;
+
+                            if (pending) {
+                                const completed = (
+                                    pending.state === 'starting'
+                                    && state === 'running'
+                                ) || (
+                                    pending.state === 'stopping'
+                                    && state === 'stopped'
+                                ) || (
+                                    pending.state === 'error'
+                                    && state === 'running'
+                                );
+
+                                if (completed) {
+                                    pendingRestreamActions.delete(key);
+                                } else if (
+                                    Date.now() - pending.startedAt
+                                    > RESTREAM_ACTION_TIMEOUT_MS
+                                ) {
+                                    pending.state = 'error';
+                                    state = 'error';
+                                } else {
+                                    state = pending.state;
+                                }
+                            }
+
+                            setDestinationState(
+                                fieldId,
+                                destination.index,
+                                state
+                            );
+                        });
+                    }
+                );
+
+                document.querySelectorAll('details[open] .logs').forEach(
+                    logs => {
+                        const parts = logs.id.replace('logs-', '').split('-');
+                        loadLogs(parts[0], parts[1]);
+                    }
+                );
+            } catch (error) {
+                console.warn(
+                    'Restream status is temporarily unavailable:',
+                    error
+                );
+            }
+        }
+
+                async function saveUrl(fieldId, urlIndex) {
+            const input = document.getElementById(
+                `input-${fieldId}-${urlIndex}`
+            );
+            const newUrl = input.value.trim();
+            const validationError = validateDestinationUrl(newUrl);
+            if (validationError) {
+                showToast(validationError, 'error');
+                input.focus();
+                return;
+            }
+
+            try {
+                await requestJson(
+                    `/admin/api/restream-urls/${fieldId}/${urlIndex}`,
+                    {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({url: newUrl})
-                    });
-                } else {
-                    alert('URL cannot be empty. Use Delete button to remove.');
-                    return;
-                }
-                
-                const data = await response.json();
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.message);
-                }
+                    }
+                );
+                await refreshFieldCard(fieldId);
+                showToast('Destination saved.');
             } catch (error) {
-                alert('Error: ' + error.message);
+                showToast(`Save failed: ${error.message}`, 'error');
             }
         }
 
         async function addUrl(fieldId) {
-            const url = prompt('Enter destination URL (e.g., rtmp://youtube.com/live/key):');
+            const url = await showDialog({
+                title: 'Add destination',
+                message: 'Enter the complete RTMP or RTMPS destination URL.',
+                input: true,
+                placeholder: 'rtmps://server.example/live/stream-key',
+                confirmLabel: 'Add destination',
+                validate: validateDestinationUrl,
+            });
             if (!url) return;
-            
+
             try {
-                const response = await fetch(`/admin/api/restream-urls/${fieldId}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({url: url.trim()})
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.message);
-                }
+                await requestJson(
+                    `/admin/api/restream-urls/${fieldId}`,
+                    {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({url})
+                    }
+                );
+                await refreshFieldCard(fieldId);
+                showToast('Destination added.');
             } catch (error) {
-                alert('Error: ' + error.message);
+                showToast(`Add failed: ${error.message}`, 'error');
             }
         }
 
         async function deleteUrl(fieldId, urlIndex) {
-            if (!confirm('Delete this destination URL?')) return;
-            
+            const confirmed = await showDialog({
+                title: 'Delete destination',
+                message: (
+                    'The destination will be stopped and removed. '
+                    + 'This action cannot be undone.'
+                ),
+                confirmLabel: 'Delete',
+                danger: true,
+            });
+            if (!confirmed) return;
+
             try {
-                const response = await fetch(`/admin/api/restream-urls/${fieldId}/${urlIndex}`, {
-                    method: 'DELETE'
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.message);
-                }
+                await requestJson(
+                    `/admin/api/restream-urls/${fieldId}/${urlIndex}`,
+                    {method: 'DELETE'}
+                );
+                await refreshFieldCard(fieldId);
+                showToast('Destination deleted.');
             } catch (error) {
-                alert('Error: ' + error.message);
+                showToast(`Delete failed: ${error.message}`, 'error');
             }
         }
 
         async function controlUrl(fieldId, urlIndex, action) {
+            const key = destinationKey(fieldId, urlIndex);
+            const transitionalState = action === 'start'
+                ? 'starting'
+                : 'stopping';
+            pendingRestreamActions.set(key, {
+                state: transitionalState,
+                startedAt: Date.now()
+            });
+            setDestinationState(fieldId, urlIndex, transitionalState);
+
             try {
-                const response = await fetch(`/admin/api/${action}/${fieldId}/${urlIndex}`, {
-                    method: 'POST'
-                });
+                const response = await fetch(
+                    `/admin/api/${action}/${fieldId}/${urlIndex}`,
+                    {method: 'POST'}
+                );
                 const data = await response.json();
-                
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.message);
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}`);
                 }
+                setTimeout(refreshRestreamStatus, 500);
             } catch (error) {
-                alert('Error: ' + error.message);
+                pendingRestreamActions.set(key, {
+                    state: 'error',
+                    startedAt: Date.now()
+                });
+                setDestinationState(fieldId, urlIndex, 'error');
+                console.error('Restream action failed:', error);
+                showToast(
+                    `Restream action failed: ${error.message}`,
+                    'error'
+                );
             }
         }
 
         async function controlAll(fieldId, action) {
-            if (!confirm(`${action === 'start' ? 'Start' : 'Stop'} all destinations for this field?`)) return;
-            
+            const verb = action === 'start' ? 'Start' : 'Stop';
+            const confirmed = await showDialog({
+                title: `${verb} all destinations`,
+                message: (
+                    `${verb} every configured destination for this field?`
+                ),
+                confirmLabel: `${verb} all`,
+                danger: action === 'stop',
+            });
+            if (!confirmed) return;
+
+            const transitionalState = action === 'start'
+                ? 'starting'
+                : 'stopping';
+            document.querySelectorAll(
+                `.url-item[data-field-id="${fieldId}"]`
+            ).forEach(item => {
+                const urlIndex = item.dataset.urlIndex;
+                pendingRestreamActions.set(
+                    destinationKey(fieldId, urlIndex),
+                    {
+                        state: transitionalState,
+                        startedAt: Date.now()
+                    }
+                );
+                setDestinationState(
+                    fieldId,
+                    urlIndex,
+                    transitionalState
+                );
+            });
+
             try {
-                // Запускаем/останавливаем все URL для поля
-                const response = await fetch(`/admin/api/${action}/${fieldId}`, {
-                    method: 'POST'
-                });
+                const response = await fetch(
+                    `/admin/api/${action}/${fieldId}`,
+                    {method: 'POST'}
+                );
                 const data = await response.json();
-                
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.message);
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${response.status}`);
                 }
+                setTimeout(refreshRestreamStatus, 500);
             } catch (error) {
-                alert('Error: ' + error.message);
+                document.querySelectorAll(
+                    `.url-item[data-field-id="${fieldId}"]`
+                ).forEach(item => {
+                    const urlIndex = item.dataset.urlIndex;
+                    pendingRestreamActions.set(
+                        destinationKey(fieldId, urlIndex),
+                        {
+                            state: 'error',
+                            startedAt: Date.now()
+                        }
+                    );
+                    setDestinationState(fieldId, urlIndex, 'error');
+                });
+                console.error('Restream group action failed:', error);
+                showToast(
+                    `Group action failed: ${error.message}`,
+                    'error'
+                );
             }
         }
 
@@ -432,40 +923,79 @@
                 const response = await fetch(`/admin/api/logs/${fieldId}/${urlIndex}`);
                 const data = await response.json();
                 
-                const logsDiv = document.getElementById(`logs-${fieldId}-${urlIndex}`);
-                if (data.logs && data.logs.length > 0) {
-                    logsDiv.innerHTML = data.logs.map(line => 
-                        `<div class="log-line ${line.toLowerCase().includes('error') ? 'log-error' : ''}">${line}</div>`
-                    ).join('');
-                    logsDiv.scrollTop = logsDiv.scrollHeight;
-                } else {
-                    logsDiv.innerHTML = '<div class="log-line">No logs available</div>';
-                }
+                const logsDiv = document.getElementById(
+                    `logs-${fieldId}-${urlIndex}`
+                );
+                logsDiv.replaceChildren();
+
+                const lines = data.logs && data.logs.length > 0
+                    ? data.logs
+                    : ['No logs available'];
+                lines.forEach(line => {
+                    const row = document.createElement('div');
+                    row.className = line.toLowerCase().includes('error')
+                        ? 'log-line log-error'
+                        : 'log-line';
+                    row.textContent = line;
+                    logsDiv.appendChild(row);
+                });
+                logsDiv.scrollTop = logsDiv.scrollHeight;
             } catch (error) {
                 console.error('Failed to load logs:', error);
             }
         }
 
-        setupRestreamLayout();
-
-        // Автообновление каждые 10 секунд
-        setInterval(() => {
-            location.reload();
-        }, 10000);
-
-        // Загрузка логов при открытии details
-        document.querySelectorAll('details').forEach(details => {
-            details.addEventListener('toggle', function() {
-                if (this.open) {
-                    const id = this.id || this.querySelector('.logs').id;
-                    const logsId = this.querySelector('.logs').id;
-                    const parts = logsId.replace('logs-', '').split('-');
-                    const fieldId = parts[0];
-                    const urlIndex = parts[1];
-                    loadLogs(fieldId, urlIndex);
+        document.getElementById('dialogCancel').addEventListener(
+            'click',
+            () => closeDialog(null)
+        );
+        document.getElementById('dialogBackdrop').addEventListener(
+            'click',
+            event => {
+                if (event.target.id === 'dialogBackdrop') {
+                    closeDialog(null);
                 }
-            });
+            }
+        );
+        document.getElementById('dialogForm').addEventListener(
+            'submit',
+            event => {
+                event.preventDefault();
+                if (!activeDialog) return;
+
+                if (!activeDialog.input) {
+                    closeDialog(true);
+                    return;
+                }
+
+                const input = document.getElementById('dialogInput');
+                const value = input.value.trim();
+                const validationError = activeDialog.validate
+                    ? activeDialog.validate(value)
+                    : '';
+                if (validationError) {
+                    document.getElementById(
+                        'dialogError'
+                    ).textContent = validationError;
+                    input.focus();
+                    return;
+                }
+                closeDialog(value);
+            }
+        );
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && activeDialog) {
+                closeDialog(null);
+            }
         });
+
+        setupRestreamLayout();
+        setupLogDetails();
+        refreshRestreamStatus();
+        setInterval(
+            refreshRestreamStatus,
+            RESTREAM_STATUS_INTERVAL_MS
+        );
     </script>
 </body>
 </html>
