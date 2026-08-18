@@ -1,6 +1,11 @@
 let streams = [];
 let nodeMetrics = null;
 const sourceMetricsCache = new Map();
+const streamPlayers = new Map();
+
+const PLAYER_RETRY_MIN_MS = 1000;
+const PLAYER_RETRY_MAX_MS = 15000;
+const PLAYER_STALL_TIMEOUT_MS = 15000;
 
 const MONITOR_LAYOUT_KEY = 'cricket-monitor-columns';
 
@@ -73,17 +78,22 @@ function mergeSourceMetrics(metrics) {
 function updateStreamStatus(stream) {
     const status = document.getElementById(stream.statusId);
     if (!status) return;
+
     const { hls } = getPlaceMetrics(stream.prefix);
-    if (hls?.state === 'active') {
+    const state = hls?.state || 'no_signal';
+
+    if (state === 'active') {
         status.className = 'status online';
         status.textContent = 'Live';
-    } else if (hls?.state === 'stale') {
+    } else if (state === 'stale') {
         status.className = 'status stale';
         status.textContent = 'Stale';
     } else {
         status.className = 'status offline';
         status.textContent = 'Offline';
     }
+
+    streamPlayers.get(String(stream.prefix))?.setServerState(state);
 }
 
 function setMetric(prefix, name, value, className = 'tech-value') {
@@ -255,49 +265,175 @@ function updateTechInfo(stream, hls, video) {
     updateStreamStatus(stream);
 }
 
-function initStream(stream) {
+function createStreamPlayer(stream) {
     const video = document.getElementById(stream.id);
-    const status = document.getElementById(stream.statusId);
-    
-    if (!video) return;
-    
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        const hls = new Hls({
+    if (!video) return null;
+
+    let hls = null;
+    let retryTimer = null;
+    let watchdogTimer = null;
+    let retryDelay = PLAYER_RETRY_MIN_MS;
+    let serverState = 'no_signal';
+    let lastPlaybackTime = null;
+    let lastProgressAt = Date.now();
+    let destroyed = false;
+
+    function clearRetry() {
+        if (retryTimer !== null) {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+        }
+    }
+
+    function scheduleRecovery(reason) {
+        if (destroyed || retryTimer !== null) return;
+
+        const delay = retryDelay;
+        retryDelay = Math.min(retryDelay * 2, PLAYER_RETRY_MAX_MS);
+        console.warn(
+            `Player ${stream.prefix}: recovery in ${delay} ms (${reason})`
+        );
+
+        retryTimer = setTimeout(() => {
+            retryTimer = null;
+            rebuild();
+        }, delay);
+    }
+
+    function markPlaybackProgress() {
+        retryDelay = PLAYER_RETRY_MIN_MS;
+        lastPlaybackTime = video.currentTime;
+        lastProgressAt = Date.now();
+    }
+
+    function attachHlsJs() {
+        hls = new Hls({
             liveSyncDurationCount: 3,
             liveMaxLatencyDurationCount: 10,
             enableWorker: true
         });
-        
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            markPlaybackProgress();
+            video.play().catch(() => {});
+        });
+
+        hls.on(Hls.Events.FRAG_LOADED, markPlaybackProgress);
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+            if (!data.fatal) return;
+
+            if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                try {
+                    hls.recoverMediaError();
+                    return;
+                } catch (error) {
+                    console.warn(
+                        `Player ${stream.prefix}: media recovery failed`,
+                        error
+                    );
+                }
+            }
+
+            scheduleRecovery(data.details || data.type || 'fatal HLS error');
+        });
+
         hls.loadSource(stream.url);
         hls.attachMedia(video);
-        
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            video.play().catch(e => {});
-        });
-        
-        hls.on(Hls.Events.ERROR, function(event, data) {
-            if (data.fatal) {
-                status.className = 'status offline';
-                status.textContent = '⚫ Offline';
-            }
-        });
-        
-        setInterval(() => {
-            updateTechInfo(stream, hls, video);
-        }, 2000);
-        
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = stream.url;
-        video.addEventListener('loadedmetadata', function() {
-            video.play().catch(e => {});
-        });
-        
-        setInterval(() => {
-            updateTechInfo(stream, null, video);
-        }, 2000);
     }
 
-    updateTechInfo(stream, null, video);
+    function attachNativeHls() {
+        video.src = stream.url;
+        video.load();
+        video.play().catch(() => {});
+    }
+
+    function rebuild() {
+        if (destroyed) return;
+        clearRetry();
+
+        if (hls) {
+            hls.destroy();
+            hls = null;
+        }
+
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        lastPlaybackTime = null;
+        lastProgressAt = Date.now();
+
+        if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+            attachHlsJs();
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            attachNativeHls();
+        }
+    }
+
+    video.addEventListener('playing', markPlaybackProgress);
+    video.addEventListener('timeupdate', () => {
+        if (video.currentTime !== lastPlaybackTime) {
+            markPlaybackProgress();
+        }
+    });
+    video.addEventListener('error', () => {
+        scheduleRecovery('video element error');
+    });
+    video.addEventListener('stalled', () => {
+        scheduleRecovery('video stalled');
+    });
+
+    watchdogTimer = setInterval(() => {
+        updateTechInfo(stream, hls, video);
+
+        if (serverState !== 'active') return;
+
+        const playbackStalled = (
+            video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+            || Date.now() - lastProgressAt > PLAYER_STALL_TIMEOUT_MS
+        );
+        if (playbackStalled) {
+            scheduleRecovery('active stream is not advancing');
+        } else if (video.paused) {
+            video.play().catch(() => {});
+        }
+    }, 2000);
+
+    rebuild();
+
+    return {
+        setServerState(nextState) {
+            const becameActive = (
+                nextState === 'active'
+                && serverState !== 'active'
+            );
+            serverState = nextState;
+            if (becameActive) {
+                clearRetry();
+                retryDelay = PLAYER_RETRY_MIN_MS;
+                scheduleRecovery('stream became active');
+            }
+        },
+        destroy() {
+            destroyed = true;
+            clearRetry();
+            if (watchdogTimer !== null) clearInterval(watchdogTimer);
+            if (hls) hls.destroy();
+        }
+    };
+}
+
+function initStream(stream) {
+    const existing = streamPlayers.get(String(stream.prefix));
+    existing?.destroy();
+
+    const player = createStreamPlayer(stream);
+    if (player) {
+        streamPlayers.set(String(stream.prefix), player);
+    }
+
+    const video = document.getElementById(stream.id);
+    if (video) updateTechInfo(stream, null, video);
 }
 
 async function refreshNodeMetrics() {
