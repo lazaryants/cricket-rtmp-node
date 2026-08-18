@@ -57,6 +57,15 @@ class SupervisorValidationTests(unittest.TestCase):
     def setUp(self):
         self.supervisor = RestreamSupervisor()
 
+    def test_source_uses_local_rtmp_without_hls_latency(self):
+        settings = mock.Mock(local_rtmp_origin="rtmp://127.0.0.1")
+        supervisor = RestreamSupervisor(settings)
+
+        self.assertEqual(
+            supervisor.source_url(6, "court-six"),
+            "rtmp://127.0.0.1/place6/court-six",
+        )
+
     def test_rejects_invalid_requests_before_dispatch(self):
         for request in (
             {"action": "shell", "field_id": 1},

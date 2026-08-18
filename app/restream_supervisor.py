@@ -54,16 +54,20 @@ class RestreamSupervisor:
             raise ValueError("invalid destination index")
         return field, [url_index]
 
+    def source_url(self, field_id, stream_key):
+        """Return the local RTMP source without adding HLS latency."""
+        return (
+            f"{self.settings.local_rtmp_origin}/"
+            f"place{field_id}/{stream_key}"
+        )
+
     def start(self, field_id, url_index=None):
         with self.lock:
             self.settings.ensure_runtime_directories()
             field, indices = self.selected_indices(field_id, url_index)
             destinations = field.get("restream_urls", [])
             stream_key = field.get("stream_key") or f"stream{field_id}"
-            source = (
-                f"{self.settings.local_hls_origin}/"
-                f"place{field_id}/{stream_key}.m3u8"
-            )
+            source = self.source_url(field_id, stream_key)
             started = []
             already_running = []
 
